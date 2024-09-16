@@ -87,7 +87,7 @@ def BC(q):
     # Precompute A[x, a] matrices and cache them
     A_cache = {(x, a): A_matrix(x, a) for x, a in product([0, 1], repeat=2)}
 
-    index_range = range(9)  # Indices from 0 to 8 inclusive
+    index_range = range(8, -1, -1)  # Indices from 0 to 8 inclusive
     total_combinations = 9 ** 8  # Total number of combinations
     print(f"Total combinations to compute: {total_combinations}")
 
@@ -96,7 +96,7 @@ def BC(q):
 
     max_eigenvalue = None
     processed = 0
-    update_interval = 10000  # Update progress every 10,000 combinations
+    update_interval = 100000  # Update progress every 100000 combinations
     start_time = time.time()
     with Pool(processes=cpu_count()) as pool:
         for result in pool.imap_unordered(compute_CC, args_generator, chunksize=1000):
@@ -110,7 +110,7 @@ def BC(q):
                 print(f"Processed {processed}/{total_combinations} combinations. "
                       f"Elapsed time: {elapsed_time:.2f}s, "
                       f"Estimated remaining time: {remaining_time / 3600:.2f}h, "
-                      f"Current BC[q]: {current_BC_q}")
+                      f"Current eta crit: {current_BC_q/( (((1/2) *(1 + 1/(2**0.5)))**3 - q))}")
 
     return 8 * max_eigenvalue if max_eigenvalue is not None else None
 
