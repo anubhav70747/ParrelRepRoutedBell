@@ -4,6 +4,7 @@ from multiprocessing import Pool, cpu_count
 import time  # Moved the import statement to the top
 import matplotlib.pyplot as plt
 
+
 def delta(a, b):
     """Kronecker delta function."""
     return int(a == b)
@@ -29,48 +30,46 @@ def compute_CC(args):
     identity_matrix = np.identity(8, dtype=np.float64)
     CC = np.zeros((8, 8), dtype=np.float64)
 
-    # Sum over a, b, c in {0, 1}
+    # Iterate over all combinations of a, b, c
     for a, b, c in product([0, 1], repeat=3):
         idx_abc = 4 * a + 2 * b + c  # Calculate idx_{abc}
 
-        # Compute delta terms once per (a, b, c)
-        delta_terms = [
-            delta(i, idx_abc),
-            delta(j, idx_abc),
-            delta(k, idx_abc),
-            delta(l, idx_abc),
-            delta(m, idx_abc),
-            delta(n, idx_abc),
-            delta(o, idx_abc),
-            delta(p, idx_abc)
-        ]
+        # Compute delta terms for each index
+        delta_i = delta(i, idx_abc)
+        delta_j = delta(j, idx_abc)
+        delta_k = delta(k, idx_abc)
+        delta_l = delta(l, idx_abc)
+        delta_m = delta(m, idx_abc)
+        delta_n = delta(n, idx_abc)
+        delta_o = delta(o, idx_abc)
+        delta_p = delta(p, idx_abc)
 
-        # Skip computation if all delta terms are zero
-        if not any(delta_terms):
-            continue
+        # Check if any delta terms are non-zero
+        if not any([delta_i, delta_j, delta_k, delta_l, delta_m, delta_n, delta_o, delta_p]):
+            continue  # Skip to next a, b, c if all delta terms are zero
 
-        # Sum over x0, x1, x2 in {0, 1}
-        for x0, x1, x2 in product([0, 1], repeat=3):
-            # Compute the eight terms as per your expression
-            terms = [
-                delta_terms[0] * A3_matrix(x0, x1, x2, a, b, c, A_cache),
-                delta_terms[1] * A3_matrix(x0, x1, x2, a, b, c ^ x2, A_cache),
-                delta_terms[2] * A3_matrix(x0, x1, x2, a, b ^ x1, c, A_cache),
-                delta_terms[3] * A3_matrix(x0, x1, x2, a, b ^ x1, c ^ x2, A_cache),
-                delta_terms[4] * A3_matrix(x0, x1, x2, a ^ x0, b, c, A_cache),
-                delta_terms[5] * A3_matrix(x0, x1, x2, a ^ x0, b, c ^ x2, A_cache),
-                delta_terms[6] * A3_matrix(x0, x1, x2, a ^ x0, b ^ x1, c, A_cache),
-                delta_terms[7] * A3_matrix(x0, x1, x2, a ^ x0, b ^ x1, c ^ x2, A_cache),
-            ]
-            # Sum the terms directly into CC
-            CC += sum(terms)
+        # Accumulate the eight specific A3 terms
+        CC += (
+            delta_i * A3_matrix(0, 0, 0, a, b, c, A_cache) +
+            delta_j * A3_matrix(0, 0, 1, a, b, c, A_cache) +
+            delta_k * A3_matrix(0, 1, 0, a, b, c, A_cache) +
+            delta_l * A3_matrix(0, 1, 1, a, b, c, A_cache) +
+            delta_m * A3_matrix(1, 0, 0, a, b, c, A_cache) +
+            delta_n * A3_matrix(1, 0, 1, a, b, c, A_cache) +
+            delta_o * A3_matrix(1, 1, 0, a, b, c, A_cache) +
+            delta_p * A3_matrix(1, 1, 1, a, b, c, A_cache)
+        )
 
-    # Multiply CC by the scalar factor
-    CC *= (1 / 512)
+    # Apply the scaling factor of 1/64
+    CC *= (1 / 64)
 
-    # Compute delta_sum directly using the delta function
-    delta_sum = 8 - sum(delta(idx, 8) for idx in (i, j, k, l, m, n, o, p))
-    # Subtract the q term
+    # Compute delta_sum for the penalty term
+    delta_sum = 8 - (
+        delta(i, 8) + delta(j, 8) + delta(k, 8) + delta(l, 8) +
+        delta(m, 8) + delta(n, 8) + delta(o, 8) + delta(p, 8)
+    )
+
+    # Apply the penalty term
     CC -= (q / 64) * delta_sum * identity_matrix
 
     # Compute eigenvalues and return the maximum eigenvalue
@@ -97,28 +96,31 @@ def BC(q):
 
     max_eigenvalue = None
     processed = 0
-    update_interval = 100000  # Update progress every 100000 combinations
+    update_interval = 10000  # Update progress every 10,000 combinations
     start_time = time.time()
-    with Pool(processes=500) as pool:
+    with Pool(processes=cpu_count()) as pool:
         for result in pool.imap_unordered(compute_CC, args_generator, chunksize=1000):
             if max_eigenvalue is None or result > max_eigenvalue:
                 max_eigenvalue = result
             processed += 1
             if processed % update_interval == 0 or processed == total_combinations:
                 elapsed_time = time.time() - start_time
-                remaining_time = (elapsed_time / processed) * (total_combinations - processed)
+                if processed > 0:
+                    remaining_time = (elapsed_time / processed) * (total_combinations - processed)
+                else:
+                    remaining_time = 0
                 current_BC_q = 8 * max_eigenvalue if max_eigenvalue is not None else 'N/A'
                 print(f"Processed {processed}/{total_combinations} combinations. "
                       f"Elapsed time: {elapsed_time:.2f}s, "
                       f"Estimated remaining time: {remaining_time / 3600:.2f}h, "
-                      f"Current eta crit: {current_BC_q/( (((1/2) *(1 + 1/(2**0.5)))**3 - q))}")
+                      f"Eta[q]: {current_BC_q/(1-q)}")
 
     return 8 * max_eigenvalue if max_eigenvalue is not None else None
 
 # Example usage:
 if __name__ == "__main__":
     # Define the range of q values from 0.47 to 0.48 with 10 steps
-    q_values = np.linspace(0.470, 0.471, 21)
+    q_values = np.linspace(0.7072, 0.7072, 1)
     results = []
     total_start_time = time.time()  # Track total computation time
 
@@ -126,7 +128,7 @@ if __name__ == "__main__":
     for q_value in q_values:
         print(f"q = {q_value}")
         start_time = time.time()  # Time the computation for each q
-        result = BC(q_value)/( (((1/2) *(1 + 1/(2**0.5)))**3 - q_value))
+        result = BC(q_value)/( (1 - q_value))
         end_time = time.time()
 
         # Store the result
